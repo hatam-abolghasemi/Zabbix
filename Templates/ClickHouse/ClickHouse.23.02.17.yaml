@@ -1,0 +1,2012 @@
+zabbix_export:
+  version: '6.0'
+  date: '2023-02-17T05:51:01Z'
+  groups:
+    -
+      uuid: 748ad4d098d447d492bb935c907f652f
+      name: Templates/Databases
+  templates:
+    -
+      uuid: b69fc5c0ca904a689e5a5ca9d10e4163
+      template: ClickHouse
+      name: ClickHouse
+      description: |
+        ***ClickHouse by HTTP***
+        
+        Get node metrics from ClickHouse HTTP interface using HTTP agent.
+        
+        Template tooling version used: 0.41
+      groups:
+        -
+          name: Templates/Databases
+      items:
+        -
+          uuid: a150b2e32ae74581a123065c6aed6245
+          name: 'ClickHouse: Compressed Read Buffer Bytes'
+          type: DEPENDENT
+          key: clickhouse.compressed.read.buffer.bytes
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "CompressedReadBufferBytes")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: adc8a931abb4400882f55cbf1577bb6e
+          name: 'ClickHouse: Delayed Inserts'
+          type: DEPENDENT
+          key: clickhouse.delayed.inserts
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "DelayedInserts")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 2f4b55bc468547b3b642573f90d8bf28
+              expression: last(/ClickHouse/clickhouse.delayed.inserts)>0
+              name: 'ClickHouse: Too Many Delayed INSERTs'
+              event_name: 'ClickHouse: we have INSERT queries that are throttled due to high number of active data parts for partition in a MergeTree, please decrease INSERT frequency.'
+              opdata: 'Delayed INSERTs: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'INSERT queries that are throttled due to high number of active data parts for partition in a MergeTree table.'
+        -
+          uuid: e614b46cde0446929120f4946cba5c5c
+          name: 'ClickHouse: Distributed Files To Insert'
+          type: DEPENDENT
+          key: clickhouse.distributed.files.to.insert
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "DistributedFilesToInsert")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: e00345b371b64e7da6d23d9f6a479476
+              expression: 'last(/ClickHouse/clickhouse.distributed.files.to.insert)>{$CLICKHOUSE_MAX_DELAYED_FILES_TO_DISTRIBUTED_INSERT}'
+              name: 'ClickHouse: Too Many Distributed Files To Insert'
+              event_name: 'ClickHouse: distributed connection exceptions occurred. (>{$CLICKHOUSE_MAX_DELAYED_FILES_TO_DISTRIBUTED_INSERT})'
+              opdata: 'Current Value: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'please check communications between Clickhouse servers and <remote_servers> in config.xml'
+        -
+          uuid: 15e90c373dca47e29d08d20bc6c9b6a4
+          name: 'ClickHouse: HTTP Connection'
+          type: DEPENDENT
+          key: clickhouse.http.connection
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "HTTPConnection")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: ac9a45575bb94dc995d119bf6a3ee0c7
+              expression: 'last(/ClickHouse/clickhouse.http.connection)>{$CLICKHOUSE_MAX_HTTP_CONNECTIONS}'
+              name: 'ClickHouse: HTTP Connection'
+              event_name: 'ClickHouse: too many http connections'
+              opdata: 'Current HTTP Connections: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'The clickhouse is adapted to run not a very large number of parallel requests, not every HTTP connection means a running sql request, but a large number of open tcp connections can cause a spike in sudden sql requests, resulting in performance degradation.'
+        -
+          uuid: 2cb9ae112d0344e0807e4ff997223f91
+          name: 'ClickHouse: Inactive Parts'
+          type: HTTP_AGENT
+          key: clickhouse.inactive.parts
+          history: 7d
+          trends: 30d
+          description: 'Number of inactive parts'
+          preprocessing:
+            -
+              type: JAVASCRIPT
+              parameters:
+                - 'return JSON.parse(value.substring(value.indexOf("{\n")).trim()).data[0].c;'
+          timeout: 1m
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'SELECT COUNT(*) AS c FROM system.parts WHERE active = 0 FORMAT JSON'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 9b4613df02cf4dfb866c0d03588a4b2d
+              expression: 'min(/ClickHouse/clickhouse.inactive.parts,600s)>={$CLICKHOUSE_MAX_INACTIVE_PARTS}'
+              name: 'ClickHouse: Too Many Inactive Parts'
+              event_name: 'ClickHouse: Too Many Inactive Parts (>{$CLICKHOUSE_MAX_INACTIVE_PARTS})'
+              opdata: 'Count of Inactive Parts: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'Too many inactive parts which take up disk space'
+        -
+          uuid: 8715f9737e954000bb4ba7dd5a8d0f2f
+          name: 'ClickHouse: Inserted rows per second'
+          type: DEPENDENT
+          key: clickhouse.inserted_rows.rate
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          description: 'The number of rows inserted in all tables.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "InsertedRows")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: data
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 142bd66fdd9a4cdfb09062a5042e3ad7
+          name: 'ClickHouse: New INSERT queries per second'
+          type: DEPENDENT
+          key: clickhouse.insert_query.rate
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          description: 'Number of INSERT queries to be interpreted and potentially executed. Does not include queries that failed to parse or were rejected due to AST size limits, quota limits or limits on the number of simultaneously running queries. May include internal queries initiated by ClickHouse itself. Does not count subqueries.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "InsertQuery")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: queries
+            -
+              tag: context
+              value: data
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: f261a6b18b1044099aaede27f9b88bdc
+          name: 'ClickHouse: Mark Cache Files'
+          type: DEPENDENT
+          key: clickhouse.mark.cache.files
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "MarkCacheFiles")].value.first()'
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: b1adf6bdcac841438bbef2138a7162cf
+          name: 'ClickHouse: Mark Cache Hits'
+          type: DEPENDENT
+          key: clickhouse.mark.cache.hits
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "MarkCacheHits")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 21889bfec6ea4383852d2893205aad52
+          name: 'ClickHouse: Mark Cache Misses'
+          type: DEPENDENT
+          key: clickhouse.mark.cache.misses
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "MarkCacheMisses")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 68ac77268bb740068f73132b3091c014
+          name: 'ClickHouse: Max count of parts per partition across all tables'
+          type: DEPENDENT
+          key: clickhouse.max.part.count.for.partition
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: |
+            Clickhouse MergeTree table engine split each INSERT query to partitions (PARTITION BY expression) and add one or more PARTS per INSERT inside each partition,
+            after that background merge process run.
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "MaxPartCountForPartition")].value.first()'
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: data
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 298c6056edbf4434a7eff218169ae589
+              expression: 'min(/ClickHouse/clickhouse.max.part.count.for.partition,600s)>={$CLICKHOUSE_MAX_PARTS}'
+              name: 'ClickHouse: Too Many Parts'
+              event_name: 'ClickHouse: Too many parts in a partition (>{$CLICKHOUSE_MAX_PARTS})'
+              opdata: 'Current Value: {ITEM.LASTVALUE1}'
+              priority: AVERAGE
+              description: 'Some partition has too many unmerged parts.'
+        -
+          uuid: 0bf9f38775ec45f1b2bdcd5bd710c232
+          name: 'ClickHouse: Memory used for queries'
+          type: DEPENDENT
+          key: clickhouse.memory.tracking
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: B
+          description: '"Total amount of memory (bytes) allocated in currently executing queries."'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "MemoryTracking")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: component
+              value: memory
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 9d444c20f99d4c5791355e8d11f245d3
+          name: 'ClickHouse: Current running merges'
+          type: DEPENDENT
+          key: clickhouse.merge.current
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: 'Number of executing background merges'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "Merge")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: component
+              value: queries
+            -
+              tag: context
+              value: data
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: c0d4de1c32164435a31ed1d63238d44c
+          name: 'ClickHouse: Merged rows per second'
+          type: DEPENDENT
+          key: clickhouse.merge_rows.rate
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          description: 'Rows read for background merges.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "MergedRows")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: data
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 812330fe7cd74bb5aa466a4e8c0fb34f
+          name: 'ClickHouse: MySQL Connection'
+          type: DEPENDENT
+          key: clickhouse.mysql.connection
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "MySQLConnection")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 2e38e9845a9b45aa84193213d78f46eb
+              expression: 'last(/ClickHouse/clickhouse.mysql.connection)>{$CLICKHOUSE_MAX_MYSQL_CONNECTIONS}'
+              name: 'ClickHouse: MySQL Connection'
+              event_name: 'ClickHouse: too many mysql connections'
+              opdata: 'Current MySQL Connections: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'The clickhouse is adapted to run not a very large number of parallel requests, not every MySQL connection means a running sql request, but a large number of open tcp connections can cause a spike in sudden sql requests, resulting in performance degradation.'
+        -
+          uuid: 8d7d4670839c462e9b662ff4f786d254
+          name: 'ClickHouse: Network Receive Errors'
+          type: DEPENDENT
+          key: clickhouse.network.receive.errors
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "NetworkReceiveErrors_ens192")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: network
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 594d9fa4f30140429ffe2985b6f47940
+          name: 'ClickHouse: Network Send Errors'
+          type: DEPENDENT
+          key: clickhouse.network.send.errors
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "NetworkSendErrors_ens192")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: network
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: f4b8ff0e98d74bb9887d0f05745d4eeb
+          name: 'ClickHouse: Part Mutations'
+          type: DEPENDENT
+          key: clickhouse.part.mutations
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: 'Number of mutations (ALTER DELETE/UPDATE)'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "PartMutation")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: component
+              value: queries
+            -
+              tag: context
+              value: data
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: a3f3f4ad4b3e457aae7b662ef3d42391
+          name: 'ClickHouse: Ping'
+          type: HTTP_AGENT
+          key: clickhouse.ping
+          history: 7d
+          trends: 30d
+          valuemap:
+            name: 'Service state'
+          preprocessing:
+            -
+              type: REGEX
+              parameters:
+                - Ok\.
+                - '1'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 10m
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/ping'
+          tags:
+            -
+              tag: component
+              value: health
+            -
+              tag: component
+              value: network
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 2c6ec5db26854d3b8e178d7615cd368f
+              expression: |
+                count(/ClickHouse/clickhouse.ping,10m,,"0")>9 and
+                last(/ClickHouse/clickhouse.ping)=0
+              name: 'ClickHouse: Ping is unsuccessful.'
+              event_name: 'ClickHouse: Ping has been unsuccessful for last 10 minutes.'
+              opdata: 'Current state: {ITEM.LASTVALUE1}'
+              priority: AVERAGE
+              manual_close: 'YES'
+              dependencies:
+                -
+                  name: 'ClickHouse: Port Unreachable'
+                  expression: |
+                    count(/ClickHouse/net.tcp.service[{$CLICKHOUSE.SCHEME},"{HOST.CONN}","{$CLICKHOUSE.PORT}"],5m,,"0")>4 and
+                    last(/ClickHouse/net.tcp.service[{$CLICKHOUSE.SCHEME},"{HOST.CONN}","{$CLICKHOUSE.PORT}"])=0
+              tags:
+                -
+                  tag: scope
+                  value: availability
+        -
+          uuid: 96349f68bef4402b99a4506c4fbe08c8
+          name: 'ClickHouse: Longest currently running query time'
+          type: HTTP_AGENT
+          key: clickhouse.process.elapsed
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: s
+          description: 'Get longest running query.'
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'SELECT max(elapsed) FROM system.processes'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: queries
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 6e7942519fe04a20a6314b50dbfc3a62
+              expression: 'last(/ClickHouse/clickhouse.process.elapsed)>{$CLICKHOUSE.QUERY_TIME.MAX.WARN}'
+              name: 'ClickHouse: There are queries running is long'
+              event_name: 'ClickHouse: There are queries running more than {$CLICKHOUSE.QUERY_TIME.MAX.WARN} seconds'
+              priority: AVERAGE
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: performance
+        -
+          uuid: 0a8a4a4235fd47e3811e48bc27bbb185
+          name: 'ClickHouse: New queries per second'
+          type: DEPENDENT
+          key: clickhouse.query.rate
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          description: 'Number of queries to be interpreted and potentially executed. Does not include queries that failed to parse or were rejected due to AST size limits, quota limits or limits on the number of simultaneously running queries. May include internal queries initiated by ClickHouse itself. Does not count subqueries.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.data.event == "Query")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: queries
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 8d910269ab7a4edc8bf4d8419bf14c53
+              expression: 'last(/ClickHouse/clickhouse.query.rate)>0.9*{$CLICKHOUSE_MAX_CONCURRENT_QUERIES}'
+              name: 'ClickHouse: New queries per second'
+              event_name: 'ClickHouse: running queries 90% of {$CLICKHOUSE_MAX_CONCURRENT_QUERIES}'
+              opdata: 'Current Value: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'Each concurrent SELECT query use memory in JOINs use CPU for running aggregation function and can read lot of data from disk when scan parts in partitions and utilize disk IO.'
+        -
+          uuid: f1d43b6d24e44c9dbc6a8488237d6b15
+          name: 'ClickHouse: Read bytes per second'
+          type: DEPENDENT
+          key: clickhouse.read_bytes.rate
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: Bps
+          description: '"Number of bytes (the number of bytes before decompression) read from compressed sources (files, network)."'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "ReadCompressedBytes")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: network
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 55a6a5f635cc49dd9896aacc4cc7baa1
+          name: 'ClickHouse: Get replicas info'
+          type: HTTP_AGENT
+          key: clickhouse.replicas
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'SELECT database, table, is_readonly, is_session_expired, future_parts, parts_to_check, queue_size, inserts_in_queue, merges_in_queue, log_max_index, log_pointer, total_replicas, active_replicas, log_max_index - log_pointer as replica_lag FROM system.replicas format JSON'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: component
+              value: replicas
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 167bb697d1694fcd8cfa436cc2930795
+          name: 'ClickHouse: Replication lag across all tables'
+          type: DEPENDENT
+          key: clickhouse.replicas.max.absolute.delay
+          delay: '0'
+          history: 7d
+          trends: 30d
+          units: s
+          description: 'Maximum replica queue delay relative to current time'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "ReplicasMaxAbsoluteDelay")].value.first()'
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: replication
+            -
+              tag: context
+              value: replication
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: f439e9fe912948d7a241cae9a7709f24
+              expression: 'last(/ClickHouse/clickhouse.replicas.max.absolute.delay)>={$CLICKHOUSE_MAX_REPLICA_DELAY_DISTRIBUTED_QUERIES}'
+              name: 'ClickHouse: Replication lag across all tables'
+              event_name: 'ClickHouse: replication lag is more than {$CLICKHOUSE_MAX_REPLICA_DELAY_DISTRIBUTED_QUERIES} sec.'
+              opdata: 'Last Value: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'When replica have too much lag, it can be skipped from Distributed SELECT Queries without errors and you will have wrong query results.'
+        -
+          uuid: 40cad48199864392b716cd8e06094b0b
+          name: 'ClickHouse: Replicas Max Inserts In Queue'
+          type: DEPENDENT
+          key: clickhouse.replicas.max.inserts.in.queue
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "ReplicasMaxInsertsInQueue")].value.first()'
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: replication
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 01dd203fb6e24dcfa42dd9c3c5f0d671
+          name: 'ClickHouse: Replicas Max Merges In Queue'
+          type: DEPENDENT
+          key: clickhouse.replicas.max.merges.in.queue
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "ReplicasMaxMergesInQueue")].value.first()'
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: replication
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 970432c1eb4d49b18a307f28eee9ccd3
+          name: 'ClickHouse: Replicas Max Queue Size'
+          type: DEPENDENT
+          key: clickhouse.replicas.max.queue.size
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "ReplicasMaxQueueSize")].value.first()'
+          master_item:
+            key: clickhouse.system.asynchronous_metrics
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: replication
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 41447f6d3a4b4743bc284cd4c1fe5bf3
+              expression: 'min(/ClickHouse/clickhouse.replicas.max.queue.size,600s)>={$CLICKHOUSE_MAX_REPLICA_QUEUE}'
+              name: 'ClickHouse: Too Large Replication Queue'
+              event_name: 'ClickHouse: Too large replication queue (>{$CLICKHOUSE_MAX_REPLICA_QUEUE})'
+              opdata: 'Current Size: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'Replication queue of some tables is too large.'
+        -
+          uuid: 1af9e22c25db475e83bdbe7620d028d6
+          name: 'ClickHouse: Total number read-only Replicas'
+          type: DEPENDENT
+          key: clickhouse.replicas.readonly.total
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: |
+            Number of Replicated tables that are currently in readonly state
+            due to re-initialization after ZooKeeper session loss
+            or due to startup without ZooKeeper configured.
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "ReadonlyReplica")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: component
+              value: replication
+            -
+              tag: context
+              value: replication
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: e595c4b0bddd4235906fe219f3c9f575
+          name: 'ClickHouse: Selected Marks'
+          type: DEPENDENT
+          key: clickhouse.selected.marks
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "SelectedMarks")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: f9d100854e274b538a5161551603e133
+          name: 'ClickHouse: Selected Parts'
+          type: DEPENDENT
+          key: clickhouse.selected.parts
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "SelectedParts")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: system
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 46044fbbd5ee4d5cb0bf1cb9b4805514
+          name: 'ClickHouse: New SELECT queries per second'
+          type: DEPENDENT
+          key: clickhouse.select_query.rate
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          description: 'Number of SELECT queries to be interpreted and potentially executed. Does not include queries that failed to parse or were rejected due to AST size limits, quota limits or limits on the number of simultaneously running queries. May include internal queries initiated by ClickHouse itself. Does not count subqueries.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.event == "SelectQuery")].value.first()'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+            -
+              type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+          master_item:
+            key: clickhouse.system.events
+          tags:
+            -
+              tag: component
+              value: queries
+            -
+              tag: context
+              value: memory
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 690a9933210f4686b7fd88279c01bcf6
+          name: 'ClickHouse: Get system.asynchronous_metrics'
+          type: HTTP_AGENT
+          key: clickhouse.system.asynchronous_metrics
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Get metrics that are calculated periodically in the background'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'select metric, value from system.asynchronous_metrics format JSON'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: asynchronous-metrics
+            -
+              tag: component
+              value: raw
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: 231c7935b0c549afa4f0dc115ceaabf6
+          name: 'ClickHouse: Get system.events'
+          type: HTTP_AGENT
+          key: clickhouse.system.events
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Get information about the number of events that have occurred in the system.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'select event, value from system.events format JSON'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: component
+              value: system-events
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: f3e7196b50ef43d8845814a09e4eadde
+          name: 'ClickHouse: Get system.metrics'
+          type: HTTP_AGENT
+          key: clickhouse.system.metrics
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Get metrics which can be calculated instantly, or have a current value format JSONEachRow'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'select metric, value from system.metrics format JSON'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: component
+              value: system-metrics
+            -
+              tag: template
+              value: clickhouse
+        -
+          uuid: fe2c173eab0941949a8684e3507defbd
+          name: 'ClickHouse: Get system.settings'
+          type: HTTP_AGENT
+          key: clickhouse.system.settings
+          delay: 10m
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Get information about settings that are currently in use.'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.data
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          timeout: 30s
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'select name, value from system.settings format JSON'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: component
+              value: system-settings
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 34fa0976e77646d493a8fe9fe53e5e5a
+              expression: 'last(/ClickHouse/clickhouse.system.settings,#1)<>last(/ClickHouse/clickhouse.system.settings,#2) and length(last(/ClickHouse/clickhouse.system.settings))>0'
+              name: 'ClickHouse: Configuration Change'
+              event_name: 'ClickHouse: Configuration has been changed (new version: {ITEM.VALUE})'
+              priority: INFO
+              description: 'ClickHouse configuration has been changed. Ack to close.'
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: notice
+        -
+          uuid: 36b971882202427dbf9578031905e356
+          name: 'ClickHouse: TCP Connection'
+          type: DEPENDENT
+          key: clickhouse.tcp.connections
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: B
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - '$[?(@.metric == "TCPConnection")].value.first()'
+          master_item:
+            key: clickhouse.system.metrics
+          tags:
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 8bbe85ce321049dab48fc60c2cbee36b
+              expression: 'last(/ClickHouse/clickhouse.tcp.connections)>{$CLICKHOUSE_MAX_TCP_CONNECTIONS}'
+              name: 'ClickHouse: Too Many TCP Connection'
+              opdata: 'TCP Connections: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'The clickhouse is adapted to run not a very large number of parallel requests, not every tcp connection means a running sql request, but a large number of open tcp connections can cause a spike in sudden sql requests, resulting in performance degradation.'
+        -
+          uuid: 9463ec61882b4dcaab4358820575e84d
+          name: 'ClickHouse: Version'
+          type: HTTP_AGENT
+          key: clickhouse.version
+          history: 7d
+          trends: '0'
+          value_type: CHAR
+          description: 'Version of the server'
+          preprocessing:
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          url: '{$CLICKHOUSE.SCHEME}://{HOST.CONN}:{$CLICKHOUSE.PORT}/'
+          query_fields:
+            -
+              name: query
+              value: 'SELECT version()'
+          headers:
+            -
+              name: X-ClickHouse-User
+              value: '{$CLICKHOUSE.USER}'
+            -
+              name: X-ClickHouse-Key
+              value: '{$CLICKHOUSE.PASSWORD}'
+          tags:
+            -
+              tag: component
+              value: application
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: a80392013334487d8a5c220b7c40bf64
+              expression: 'last(/ClickHouse/clickhouse.version,#1)<>last(/ClickHouse/clickhouse.version,#2) and length(last(/ClickHouse/clickhouse.version))>0'
+              name: 'ClickHouse: Version Change'
+              event_name: 'ClickHouse: Version has changed (new version: {ITEM.VALUE})'
+              priority: INFO
+              description: 'ClickHouse version has changed. Ack to close.'
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: notice
+        -
+          uuid: a6196942cc3241da96d469f4b79d94cf
+          name: 'ClickHouse: Check Port Response Time'
+          type: SIMPLE
+          key: 'net.tcp.service.perf[tcp,"{HOST.CONN}","{$CLICKHOUSE.PORT}"]'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: s
+          description: 'Checks response time of port 8123.'
+          tags:
+            -
+              tag: component
+              value: network
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 0c13215584b24001b71b7d7b54611a9c
+              expression: 'min(/ClickHouse/net.tcp.service.perf[tcp,"{HOST.CONN}","{$CLICKHOUSE.PORT}"],3m)>{$CLICKHOUSE.PORT.RESPONSE_TIME.MAX.WARN}'
+              name: 'ClickHouse: High Response Time'
+              event_name: 'ClickHouse: Port {$CLICKHOUSE.PORT} response time is too high. (over {$CLICKHOUSE.PORT.RESPONSE_TIME.MAX.WARN} for last 3 minutes)'
+              opdata: 'Last Response Time: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: 'The response time of port 8123 is very low.'
+              manual_close: 'YES'
+        -
+          uuid: eb3e6b673d6c41e5acce03ccc5c6dae6
+          name: 'ClickHouse: Check Port Availability'
+          type: SIMPLE
+          key: 'net.tcp.service[{$CLICKHOUSE.SCHEME},"{HOST.CONN}","{$CLICKHOUSE.PORT}"]'
+          history: 7d
+          trends: 30d
+          description: 'Checks if destination is listening to port 8123.'
+          valuemap:
+            name: 'Port State'
+          tags:
+            -
+              tag: component
+              value: health
+            -
+              tag: component
+              value: network
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 164a124ed4cd4bb59065ce8d9e136580
+              expression: |
+                count(/ClickHouse/net.tcp.service[{$CLICKHOUSE.SCHEME},"{HOST.CONN}","{$CLICKHOUSE.PORT}"],5m,,"0")>4 and
+                last(/ClickHouse/net.tcp.service[{$CLICKHOUSE.SCHEME},"{HOST.CONN}","{$CLICKHOUSE.PORT}"])=0
+              name: 'ClickHouse: Port Unreachable'
+              event_name: 'ClickHouse: Port {$CLICKHOUSE.PORT} has been unreachable for last 5 minutes.'
+              opdata: 'Current state: {ITEM.LASTVALUE1}'
+              priority: AVERAGE
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: availability
+        -
+          uuid: e82fa77e98a44211b748af86c5cd9a1c
+          name: 'Clickhouse: Service Activity State'
+          type: DEPENDENT
+          key: 'systemd.service.active_state[clickhouse-server.service]'
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: 'State value that reflects whether the unit is currently active or not. The following states are currently defined: "active", "reloading", "inactive", "failed", "activating", and "deactivating".'
+          valuemap:
+            name: 'Unit Active State'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.ActiveState.state
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'systemd.unit.get[clickhouse-server.service]'
+          tags:
+            -
+              tag: component
+              value: service
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 83bfb02bb3494156bef78ef34f778263
+              expression: 'last(/ClickHouse/systemd.service.active_state[clickhouse-server.service])<>1'
+              name: 'ClickHouse: Service Activity State'
+              event_name: 'ClickHouse: service state is {ITEM.LASTVALUE1}.'
+              priority: HIGH
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: notice
+        -
+          uuid: e38345900a8f4dd99ba550a4bdc60d72
+          name: 'Clickhouse: Service Load State'
+          type: DEPENDENT
+          key: 'systemd.service.load_state[clickhouse-server.service]'
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: 'State value that reflects whether the configuration file of this unit has been loaded. The following states are currently defined: "loaded", "error", and "masked".'
+          valuemap:
+            name: 'Unit Load State'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.LoadState.state
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'systemd.unit.get[clickhouse-server.service]'
+          tags:
+            -
+              tag: component
+              value: service
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: 37283db9a9b64cc68c0339cde7b7b6db
+              expression: 'last(/ClickHouse/systemd.service.load_state[clickhouse-server.service])<>1'
+              name: 'ClickHouse: Service Configuration State'
+              event_name: 'ClickHouse: service configuration is in {ITEM.LASTVALUE1} state.'
+              priority: AVERAGE
+              tags:
+                -
+                  tag: scope
+                  value: notice
+        -
+          uuid: b54d9d4dc2c74183908dbeea9d4c2c1d
+          name: 'Clickhouse: Service File State'
+          type: DEPENDENT
+          key: 'systemd.service.unitfile_state[clickhouse-server.service]'
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: 'Encodes the install state of the unit file of FragmentPath. It currently knows the following states: "enabled", "enabled-runtime", "linked", "linked-runtime", "masked", "masked-runtime", "static", "disabled", and "invalid".'
+          valuemap:
+            name: 'Unit File State'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.UnitFileState.state
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 30m
+          master_item:
+            key: 'systemd.unit.get[clickhouse-server.service]'
+          tags:
+            -
+              tag: component
+              value: service
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: b8c8fce67bce49bf9f750e374c04341d
+              expression: 'last(/ClickHouse/systemd.service.unitfile_state[clickhouse-server.service])<>1'
+              name: 'ClickHouse: Service File State'
+              event_name: 'ClickHouse: service file is in {ITEM.LASTVALUE1} state.'
+              priority: AVERAGE
+              tags:
+                -
+                  tag: scope
+                  value: notice
+        -
+          uuid: b995dd30987e461ea3d7446cc8effbc3
+          name: 'Clickhouse: Uptime'
+          type: DEPENDENT
+          key: 'systemd.service.uptime[clickhouse-server.service]'
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: s
+          description: 'Number of seconds since unit entered the active state.'
+          preprocessing:
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  data = JSON.parse(value)
+                    if (data.ActiveEnterTimestamp > data.ActiveExitTimestamp) {
+                        return Math.floor(Date.now()/1000)-Number(data.ActiveEnterTimestamp)/1000000;
+                      }
+                    return null;
+          master_item:
+            key: 'systemd.unit.get[clickhouse-server.service]'
+          tags:
+            -
+              tag: component
+              value: service
+            -
+              tag: template
+              value: clickhouse
+          triggers:
+            -
+              uuid: c1df360d98d34deb82f37e19da81e22f
+              expression: 'last(/ClickHouse/systemd.service.uptime[clickhouse-server.service])<10m'
+              name: 'Clickhouse: Service Restart'
+              event_name: 'Clickhouse: service has been restarted.'
+              priority: WARNING
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: availability
+        -
+          uuid: af6dc39a124544f7b8dfb29550404cf9
+          name: 'ClickHouse: Get Service Information'
+          key: 'systemd.unit.get[clickhouse-server.service]'
+          delay: 3s
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: |
+            Returns all properties of clickhouse-server service unit.
+             Unit description: {#UNIT.DESCRIPTION}.
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: component
+              value: unit
+            -
+              tag: template
+              value: clickhouse
+      discovery_rules:
+        -
+          uuid: 398484ce94ab463b8850e81d8c6930e4
+          name: Replicas
+          type: DEPENDENT
+          key: clickhouse.replicas.discovery
+          delay: '0'
+          filter:
+            evaltype: AND
+            conditions:
+              -
+                macro: '{#DB}'
+                value: '{$CLICKHOUSE.LLD.FILTER.DB.MATCHES}'
+                formulaid: A
+              -
+                macro: '{#DB}'
+                value: '{$CLICKHOUSE.LLD.FILTER.DB.NOT_MATCHES}'
+                operator: NOT_MATCHES_REGEX
+                formulaid: B
+          lifetime: 7d
+          description: 'Info about replicas'
+          item_prototypes:
+            -
+              uuid: 66b190195a374e66b85a7b8b934f4a22
+              name: 'ClickHouse: {#DB}.{#TABLE}: Active replicas'
+              type: DEPENDENT
+              key: 'clickhouse.replica.active_replicas["{#DB}.{#TABLE}"]'
+              delay: '0'
+              history: 7d
+              trends: 30d
+              description: 'Number of replicas of this table that have a session in ZooKeeper (i.e., the number of functioning replicas). (Have a non-zero value only where there is an active session with ZooKeeper).'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.database == "{#DB}" && @.table == "{#TABLE}")].active_replicas.first()'
+              master_item:
+                key: clickhouse.replicas
+              tags:
+                -
+                  tag: component
+                  value: replication
+                -
+                  tag: database
+                  value: '{#DB}'
+                -
+                  tag: table
+                  value: '{#TABLE}'
+            -
+              uuid: bf3665f07a3b4970a261ff0b30a4e7f2
+              name: 'ClickHouse: {#DB}.{#TABLE}: Replica readonly'
+              type: DEPENDENT
+              key: 'clickhouse.replica.is_readonly["{#DB}.{#TABLE}"]'
+              delay: '0'
+              history: 7d
+              trends: 30d
+              description: |
+                Whether the replica is in read-only mode.
+                This mode is turned on if the config doesn't have sections with ZooKeeper, if an unknown error occurred when re-initializing sessions in ZooKeeper, and during session re-initialization in ZooKeeper.
+              valuemap:
+                name: 'Replicas state'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.database == "{#DB}" && @.table == "{#TABLE}")].is_readonly.first()'
+              master_item:
+                key: clickhouse.replicas
+              tags:
+                -
+                  tag: component
+                  value: replication
+                -
+                  tag: database
+                  value: '{#DB}'
+                -
+                  tag: table
+                  value: '{#TABLE}'
+              trigger_prototypes:
+                -
+                  uuid: a637838808f5478da9aa861c83bab899
+                  expression: 'min(/ClickHouse/clickhouse.replica.is_readonly["{#DB}.{#TABLE}"],5m)=1'
+                  name: 'ClickHouse: {#DB}.{#TABLE} Replica is readonly'
+                  priority: WARNING
+                  description: 'This mode is turned on if the config doesn''t have sections with ZooKeeper, if an unknown error occurred when re-initializing sessions in ZooKeeper, and during session re-initialization in ZooKeeper.'
+                  tags:
+                    -
+                      tag: scope
+                      value: availability
+            -
+              uuid: f673bf5fd59342cb9ab33e35504c2fcb
+              name: 'ClickHouse: {#DB}.{#TABLE}: Replica session expired'
+              type: DEPENDENT
+              key: 'clickhouse.replica.is_session_expired["{#DB}.{#TABLE}"]'
+              delay: '0'
+              history: 7d
+              trends: 30d
+              description: 'True if the ZooKeeper session expired'
+              valuemap:
+                name: 'Replicas state'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.database == "{#DB}" && @.table == "{#TABLE}")].is_session_expired.first()'
+              master_item:
+                key: clickhouse.replicas
+              tags:
+                -
+                  tag: component
+                  value: replication
+                -
+                  tag: database
+                  value: '{#DB}'
+                -
+                  tag: table
+                  value: '{#TABLE}'
+              trigger_prototypes:
+                -
+                  uuid: c92f0ec2733440fc9265cd9fac0bb93c
+                  expression: 'min(/ClickHouse/clickhouse.replica.is_session_expired["{#DB}.{#TABLE}"],5m)=1'
+                  name: 'ClickHouse: {#DB}.{#TABLE} Replica session is expired'
+                  priority: WARNING
+                  description: 'This mode is turned on if the config doesn''t have sections with ZooKeeper, if an unknown error occurred when re-initializing sessions in ZooKeeper, and during session re-initialization in ZooKeeper.'
+                  tags:
+                    -
+                      tag: scope
+                      value: performance
+            -
+              uuid: d200e60f0c4c4d08a8b3015957ad8534
+              name: 'ClickHouse: {#DB}.{#TABLE}: Replica lag'
+              type: DEPENDENT
+              key: 'clickhouse.replica.lag["{#DB}.{#TABLE}"]'
+              delay: '0'
+              history: 7d
+              trends: 30d
+              value_type: FLOAT
+              description: 'Difference between log_max_index and log_pointer'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.database == "{#DB}" && @.table == "{#TABLE}")].replica_lag.first()'
+              master_item:
+                key: clickhouse.replicas
+              tags:
+                -
+                  tag: component
+                  value: replication
+                -
+                  tag: database
+                  value: '{#DB}'
+                -
+                  tag: table
+                  value: '{#TABLE}'
+              trigger_prototypes:
+                -
+                  uuid: 2131c4f5d54a4da197f8e121410753b0
+                  expression: 'min(/ClickHouse/clickhouse.replica.lag["{#DB}.{#TABLE}"],5m) > {$CLICKHOUSE.LOG_POSITION.DIFF.MAX.WARN}'
+                  name: 'ClickHouse: {#DB}.{#TABLE}: Difference between log_max_index and log_pointer is too high'
+                  event_name: 'ClickHouse: {#DB}.{#TABLE}: Difference between log_max_index and log_pointer is too high (More than {$CLICKHOUSE.LOG_POSITION.DIFF.MAX.WARN} for 5m)'
+                  priority: WARNING
+                  tags:
+                    -
+                      tag: scope
+                      value: availability
+            -
+              uuid: 2ae9bf5c02cd48d78b777aa49a9cb4a4
+              name: 'ClickHouse: {#DB}.{#TABLE}: Replica queue size'
+              type: DEPENDENT
+              key: 'clickhouse.replica.queue_size["{#DB}.{#TABLE}"]'
+              delay: '0'
+              history: 7d
+              trends: 30d
+              description: 'Size of the queue for operations waiting to be performed.'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.database == "{#DB}" && @.table == "{#TABLE}")].queue_size.first()'
+              master_item:
+                key: clickhouse.replicas
+              tags:
+                -
+                  tag: component
+                  value: replication
+                -
+                  tag: database
+                  value: '{#DB}'
+                -
+                  tag: table
+                  value: '{#TABLE}'
+              trigger_prototypes:
+                -
+                  uuid: ea4f6e62729442059ccb5e28168ec136
+                  expression: 'min(/ClickHouse/clickhouse.replica.queue_size["{#DB}.{#TABLE}"],5m)>{$CLICKHOUSE.QUEUE.SIZE.MAX.WARN:"{#TABLE}"}'
+                  name: 'ClickHouse: {#DB}.{#TABLE}: Too many operations in queue'
+                  event_name: 'ClickHouse: {#DB}.{#TABLE}: Too many operations in queue (over {$CLICKHOUSE.QUEUE.SIZE.MAX.WARN} for 5m)'
+                  priority: WARNING
+                  tags:
+                    -
+                      tag: scope
+                      value: performance
+            -
+              uuid: e606e3a87417470bb7b03eccc4dffb60
+              name: 'ClickHouse: {#DB}.{#TABLE}: Total replicas'
+              type: DEPENDENT
+              key: 'clickhouse.replica.total_replicas["{#DB}.{#TABLE}"]'
+              delay: '0'
+              history: 7d
+              trends: 30d
+              description: 'Total number of known replicas of this table. (Have a non-zero value only where there is an active session with ZooKeeper).'
+              preprocessing:
+                -
+                  type: JSONPATH
+                  parameters:
+                    - '$[?(@.database == "{#DB}" && @.table == "{#TABLE}")].total_replicas.first()'
+              master_item:
+                key: clickhouse.replicas
+              tags:
+                -
+                  tag: component
+                  value: replication
+                -
+                  tag: database
+                  value: '{#DB}'
+                -
+                  tag: table
+                  value: '{#TABLE}'
+          trigger_prototypes:
+            -
+              uuid: a2c7859d53dc4097b1d28b6371d8c73c
+              expression: 'max(/ClickHouse/clickhouse.replica.active_replicas["{#DB}.{#TABLE}"],5m) < last(/ClickHouse/clickhouse.replica.total_replicas["{#DB}.{#TABLE}"])'
+              name: 'ClickHouse: {#DB}.{#TABLE}: Number of active replicas less than number of total replicas'
+              priority: WARNING
+              tags:
+                -
+                  tag: scope
+                  value: availability
+          graph_prototypes:
+            -
+              uuid: 82df4525f3514e119345c31fefe648fb
+              name: 'ClickHouse: {#DB}.{#TABLE}: Replica queues'
+              graph_items:
+                -
+                  sortorder: '2'
+                  color: F63100
+                  item:
+                    host: ClickHouse
+                    key: 'clickhouse.replica.queue_size["{#DB}.{#TABLE}"]'
+          master_item:
+            key: clickhouse.replicas
+          lld_macro_paths:
+            -
+              lld_macro: '{#DB}'
+              path: $.database
+            -
+              lld_macro: '{#TABLE}'
+              path: $.table
+      tags:
+        -
+          tag: class
+          value: database
+        -
+          tag: target
+          value: clickhouse
+      macros:
+        -
+          macro: '{$CLICKHOUSE.LLD.FILTER.DB.MATCHES}'
+          value: '.*'
+          description: 'Filter of discoverable databases'
+        -
+          macro: '{$CLICKHOUSE.LLD.FILTER.DB.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: 'Filter to exclude discovered databases'
+        -
+          macro: '{$CLICKHOUSE.LLD.FILTER.DICT.MATCHES}'
+          value: '.*'
+          description: 'Filter of discoverable dictionaries'
+        -
+          macro: '{$CLICKHOUSE.LLD.FILTER.DICT.NOT_MATCHES}'
+          value: CHANGE_IF_NEEDED
+          description: 'Filter to exclude discovered dictionaries'
+        -
+          macro: '{$CLICKHOUSE.LOG_POSITION.DIFF.MAX.WARN}'
+          value: '30'
+          description: 'Maximum diff between log_pointer and log_max_index.'
+        -
+          macro: '{$CLICKHOUSE.NETWORK.ERRORS.MAX.WARN}'
+          value: '5'
+          description: 'Maximum number of smth for trigger expression'
+        -
+          macro: '{$CLICKHOUSE.PARTS.PER.PARTITION.WARN}'
+          value: '300'
+          description: 'Maximum number of parts per partition for trigger expression.'
+        -
+          macro: '{$CLICKHOUSE.PASSWORD}'
+          value: dahP8eiB
+        -
+          macro: '{$CLICKHOUSE.PORT}'
+          value: '8123'
+          description: 'The port of ClickHouse HTTP endpoint'
+        -
+          macro: '{$CLICKHOUSE.PORT.RESPONSE_TIME.MAX.WARN}'
+          value: 20s
+        -
+          macro: '{$CLICKHOUSE.QUERY_TIME.MAX.WARN}'
+          value: '600'
+          description: 'Maximum ClickHouse query time in seconds for trigger expression'
+        -
+          macro: '{$CLICKHOUSE.QUEUE.SIZE.MAX.WARN}'
+          value: '20'
+          description: 'Maximum size of the queue for operations waiting to be performed for trigger expression.'
+        -
+          macro: '{$CLICKHOUSE.REPLICA.MAX.WARN}'
+          value: '600'
+          description: 'Replication lag across all tables for trigger expression.'
+        -
+          macro: '{$CLICKHOUSE.SCHEME}'
+          value: http
+          description: 'Request scheme which may be http or https'
+        -
+          macro: '{$CLICKHOUSE.USER}'
+          value: zabbix
+        -
+          macro: '{$CLICKHOUSE_MAX_CONCURRENT_QUERIES}'
+          value: '100'
+        -
+          macro: '{$CLICKHOUSE_MAX_DELAYED_FILES_TO_DISTRIBUTED_INSERT}'
+          value: '300'
+        -
+          macro: '{$CLICKHOUSE_MAX_HTTP_CONNECTIONS}'
+          value: '100'
+        -
+          macro: '{$CLICKHOUSE_MAX_INACTIVE_PARTS}'
+          value: '2000'
+        -
+          macro: '{$CLICKHOUSE_MAX_MYSQL_CONNECTIONS}'
+          value: '100'
+        -
+          macro: '{$CLICKHOUSE_MAX_PARTS}'
+          value: '50'
+        -
+          macro: '{$CLICKHOUSE_MAX_REPLICA_DELAY_DISTRIBUTED_QUERIES}'
+          value: '300'
+        -
+          macro: '{$CLICKHOUSE_MAX_REPLICA_QUEUE}'
+          value: '5'
+        -
+          macro: '{$CLICKHOUSE_MAX_TCP_CONNECTIONS}'
+          value: '1024'
+        -
+          macro: '{$CLICKHOUSE_MIN_INSERTED_ROWS_PER_QUERY}'
+          value: '1000'
+      valuemaps:
+        -
+          uuid: 0a7ded251b6c488b95e397ef375dc946
+          name: 'Port State'
+          mappings:
+            -
+              value: '0'
+              newvalue: Unreachable
+            -
+              value: '1'
+              newvalue: Ok
+        -
+          uuid: 7ef177401b0a4c02896adb194bda0f06
+          name: 'Replicas state'
+          mappings:
+            -
+              value: '0'
+              newvalue: 'False'
+            -
+              value: '1'
+              newvalue: 'True'
+        -
+          uuid: c39e83e2ee924aa9af7df1e0944035b4
+          name: 'Service state'
+          mappings:
+            -
+              value: '0'
+              newvalue: Down
+            -
+              value: '1'
+              newvalue: Up
+        -
+          uuid: 09f396c1ef744ec9b35b85af13086851
+          name: 'Unit Active State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: active
+            -
+              value: '2'
+              newvalue: reloading
+            -
+              value: '3'
+              newvalue: inactive
+            -
+              value: '4'
+              newvalue: failed
+            -
+              value: '5'
+              newvalue: activating
+            -
+              value: '6'
+              newvalue: deactivating
+        -
+          uuid: 4d55540d3a444bdca536f85a67fab5ee
+          name: 'Unit File State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: enabled
+            -
+              value: '2'
+              newvalue: enabled-runtime
+            -
+              value: '3'
+              newvalue: linked
+            -
+              value: '4'
+              newvalue: linked-runtime
+            -
+              value: '5'
+              newvalue: masked
+            -
+              value: '6'
+              newvalue: masked-runtime
+            -
+              value: '7'
+              newvalue: static
+            -
+              value: '8'
+              newvalue: disabled
+            -
+              value: '9'
+              newvalue: invalid
+        -
+          uuid: 7dc2464211b646fbb9c9f7f8b38a9dea
+          name: 'Unit Load State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: loaded
+            -
+              value: '2'
+              newvalue: error
+            -
+              value: '3'
+              newvalue: masked
+  triggers:
+    -
+      uuid: bd96e24721d04698ba6d0e4c1e26b752
+      expression: '(last(/ClickHouse/clickhouse.inserted_rows.rate)/last(/ClickHouse/clickhouse.insert_query.rate))<={$CLICKHOUSE_MIN_INSERTED_ROWS_PER_QUERY}'
+      name: 'ClickHouse: Low Inserted Rows Per INSERT Query Rate'
+      opdata: 'Inserted rows per second: {ITEM.LASTVALUE1} New INSERT queries per second: {ITEM.LASTVALUE2}'
+      priority: WARNING
+      description: 'Please increase inserted rows per INSERT query. Clickhouse team recommends inserting data in packets of at least 1000 rows or no more than a single request per second.'
+      manual_close: 'YES'
+    -
+      uuid: face00c4526c4ce4a562291abcbd4cf8
+      expression: |
+        min(/ClickHouse/clickhouse.network.send.errors,5m)>{$CLICKHOUSE.NETWORK.ERRORS.MAX.WARN} or
+        min(/ClickHouse/clickhouse.network.receive.errors,5m)>{$CLICKHOUSE.NETWORK.ERRORS.MAX.WARN}
+      name: 'ClickHouse: Too Many Network Errors'
+      event_name: 'ClickHouse: Too many network errors (over {$CLICKHOUSE.NETWORK.ERRORS.MAX.WARN} in 5m)'
+      opdata: 'Send Errors: {ITEM.LASTVALUE2} Receive Errors: {ITEM.LASTVALUE1}'
+      priority: WARNING
+      tags:
+        -
+          tag: scope
+          value: availability
+  graphs:
+    -
+      uuid: 7f701af9041a4f23b595a70255a64b79
+      name: 'ClickHouse: Check Port Response Time'
+      graph_items:
+        -
+          color: 689F38
+          calc_fnc: ALL
+          item:
+            host: ClickHouse
+            key: 'net.tcp.service.perf[tcp,"{HOST.CONN}","{$CLICKHOUSE.PORT}"]'
+    -
+      uuid: 56800d7d58be4548889412e70bb6918b
+      name: 'ClickHouse: Longest currently running query time'
+      graph_items:
+        -
+          color: FBC02D
+          calc_fnc: ALL
+          item:
+            host: ClickHouse
+            key: clickhouse.process.elapsed
