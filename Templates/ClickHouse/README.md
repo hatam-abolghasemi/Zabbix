@@ -3,14 +3,25 @@
 
 **DISCLAIMER: THIS TEMPLATE IS A MIXTURE OF SEVERAL DIFFERENT SOURCES THAT I'VE LEARNED ABOUT CLICKHOUSE MONITORING. I HAVE NOT BUILD THIS TEMPLATE FROM SCRATCH. REFERENCES ARE MENTIONED AT THE BOTTOM.**
 
-So ClickHouse 
 
 **TABLE OF CONTENTS**
-1. [Updates](#1-updates)
-2. [Implementation](#2-implementation)
+1. [Implementation](#1-implementation)
+2. [History](#2-history)
 3. [References](#3-references)
 
-## 1. Updates
+---
+
+## 1. Implementation
+
+Step 1. Create a user in clickhouse for monitoring.
+
+Step 2. Link "ClickHouse" template to its host.
+
+Step 3. Fill `{$CLICKHOUSE.USER}` and `{$CLICKHOUSE.PASSWORD}` macros with the user credentials you just made.
+
+---
+
+## 2. History
 
 [23.04.07](#230407)
 
@@ -55,17 +66,6 @@ So ClickHouse
     * ADD `clickhouse.replicas.max.queue.size`
     * ADD `clickhouse.replicas.max.absolute.delay`
     
-
----
-
-## 2. Implementation
-
-Step 1. Create a user in clickhouse for monitoring.
-
-Step 2. Link "ClickHouse" template to its host.
-
-Step 3. Fill `{$CLICKHOUSE.USER}` and `{$CLICKHOUSE.PASSWORD}` macros with the user credentials you just made.
-
 ---
 
 ## 3. References

@@ -1,0 +1,268 @@
+zabbix_export:
+  version: '6.0'
+  date: '2023-04-14T15:15:14Z'
+  groups:
+    -
+      uuid: 07e1aac31ad84c9a97c60f251bb6138b
+      name: Main
+  templates:
+    -
+      uuid: c0b8cb0697754787be1059af47780db8
+      template: Bind
+      name: Bind
+      description: |
+        Official Bind template. Requires agent of Zabbix 3.0.14, 3.4.5 and 4.0.0 or newer.
+        
+        Known Issues:
+        
+        Author:
+        Hatam Abolghasemi
+      groups:
+        -
+          name: Main
+      items:
+        -
+          uuid: 800bf51f8da4427f98aef5f9236351ac
+          name: 'Bind: Incoming Queries (A)'
+          type: DEPENDENT
+          key: bind.incoming.queries.a
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  tmp = value.split('\n')[5]
+                  return tmp.split(/\s+/)[1];
+          master_item:
+            key: bind9.bulk
+        -
+          uuid: 778206674d9e499fad9732dc9bd6995a
+          name: 'Bind: Query Timeouts'
+          type: DEPENDENT
+          key: bind.query.timeouts
+          delay: '0'
+          history: 7d
+          trends: 30d
+          preprocessing:
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  const searchStr = "UDP queries received";
+                  const lines = value.split("\n");
+                  var foundLine = 0;
+                  for (var i = 0; i < lines.length; i++) {
+                    if (lines[i].includes(searchStr)) {
+                      foundLine = lines[i];
+                      break;
+                    }
+                  }
+                  // return foundLine;
+                  return foundLine.split(/\s+/)[1];
+          master_item:
+            key: bind9.bulk
+        -
+          uuid: 3b66dd29d4e8462fbdc8ae74ba2dcae3
+          name: 'Bind: Statistics'
+          key: bind9.bulk
+          delay: 10s
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+        -
+          uuid: b23f843cfdc0474ca7493ff036f47d2b
+          name: 'Bind: Service Activity State'
+          type: DEPENDENT
+          key: 'systemd.service.active_state[bind9.service]'
+          delay: '0'
+          history: 7d
+          trends: 30d
+          description: 'State value that reflects whether the unit is currently active or not. The following states are currently defined: "active", "reloading", "inactive", "failed", "activating", and "deactivating".'
+          valuemap:
+            name: 'Unit Active State'
+          preprocessing:
+            -
+              type: JSONPATH
+              parameters:
+                - $.ActiveState.state
+            -
+              type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1m
+          master_item:
+            key: 'systemd.unit.get[bind9.service]'
+          tags:
+            -
+              tag: component
+              value: service
+            -
+              tag: template
+              value: bind
+          triggers:
+            -
+              uuid: 756ee9ea8ddb455597d12be82186ff61
+              expression: 'last(/Bind/systemd.service.active_state[bind9.service])<>1'
+              name: 'Bind: Service Activity State'
+              event_name: 'Bind: service state is {ITEM.LASTVALUE1}.'
+              priority: HIGH
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: notice
+        -
+          uuid: 079a9caa58de485ea4e34f3f6e58c62e
+          name: 'Bind: Uptime'
+          type: DEPENDENT
+          key: 'systemd.service.uptime[bind.service]'
+          delay: '0'
+          history: 7d
+          trends: 30d
+          value_type: FLOAT
+          units: s
+          description: 'Number of seconds since unit entered the active state.'
+          preprocessing:
+            -
+              type: JAVASCRIPT
+              parameters:
+                - |
+                  data = JSON.parse(value)
+                    if (data.ActiveEnterTimestamp > data.ActiveExitTimestamp) {
+                        return Math.floor(Date.now()/1000)-Number(data.ActiveEnterTimestamp)/1000000;
+                      }
+                    return null;
+          master_item:
+            key: 'systemd.unit.get[bind9.service]'
+          tags:
+            -
+              tag: component
+              value: service
+            -
+              tag: template
+              value: bind
+          triggers:
+            -
+              uuid: 1d3727b1857d49bc9e7beb3d4b6d2030
+              expression: 'last(/Bind/systemd.service.uptime[bind.service])<1m'
+              name: 'Bind: Service Restart'
+              event_name: 'Bind: service has been restarted.'
+              priority: WARNING
+              manual_close: 'YES'
+              tags:
+                -
+                  tag: scope
+                  value: availability
+        -
+          uuid: e521dcefd2504ba293edafad38f5a1df
+          name: 'Bind: Get Service Information'
+          key: 'systemd.unit.get[bind9.service]'
+          delay: 15s
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: |
+            Returns all properties of bind9 service unit.
+             Unit description: {#UNIT.DESCRIPTION}.
+          tags:
+            -
+              tag: component
+              value: raw
+            -
+              tag: component
+              value: unit
+            -
+              tag: template
+              value: bind
+      tags:
+        -
+          tag: target
+          value: bind
+      valuemaps:
+        -
+          uuid: e0828cd40b3646d1afa2d4a9b4ee41b7
+          name: 'Port State'
+          mappings:
+            -
+              value: '0'
+              newvalue: Unreachable
+            -
+              value: '1'
+              newvalue: Ok
+        -
+          uuid: 1d643033129c4dc99c1a4676811b92bb
+          name: 'Unit Active State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: active
+            -
+              value: '2'
+              newvalue: reloading
+            -
+              value: '3'
+              newvalue: inactive
+            -
+              value: '4'
+              newvalue: failed
+            -
+              value: '5'
+              newvalue: activating
+            -
+              value: '6'
+              newvalue: deactivating
+        -
+          uuid: 631b96e3d42744bcbf2bfb636cc44f9c
+          name: 'Unit File State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: enabled
+            -
+              value: '2'
+              newvalue: enabled-runtime
+            -
+              value: '3'
+              newvalue: linked
+            -
+              value: '4'
+              newvalue: linked-runtime
+            -
+              value: '5'
+              newvalue: masked
+            -
+              value: '6'
+              newvalue: masked-runtime
+            -
+              value: '7'
+              newvalue: static
+            -
+              value: '8'
+              newvalue: disabled
+            -
+              value: '9'
+              newvalue: invalid
+        -
+          uuid: 0a48690c57eb46c19a61294ed8616c6c
+          name: 'Unit Load State'
+          mappings:
+            -
+              value: '0'
+              newvalue: unknown
+            -
+              value: '1'
+              newvalue: loaded
+            -
+              value: '2'
+              newvalue: error
+            -
+              value: '3'
+              newvalue: masked
